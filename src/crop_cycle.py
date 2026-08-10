@@ -665,8 +665,8 @@ def crop_cycle_model(
         Minimum season length (days). Shorter seasons are dropped unless
         their length is NaN (incomplete seasons). Default 60.
     min_ndvi_for_peak : float, optional
-        Hard peak NDVI threshold.  If ``None``, an adaptive threshold
-        derived from ``ndvi_peak_percentile`` is used.
+        Hard peak NDVI threshold. Default ``None``, meaning an adaptive
+        threshold derived from ``ndvi_peak_percentile`` is used instead.
     ndvi_peak_percentile : float, optional
         Percentile of the smoothed series used as the adaptive peak
         threshold (clipped to ``[0.5, ndvi_peak_threshold_ceiling]``).
@@ -681,9 +681,9 @@ def crop_cycle_model(
         Default 0.35.
     season_window_days : int, optional
         Search window (days) when no bounding trough exists. Default 90.
-    exclude_months : list, optional
-        List of month numbers (1–12) whose peak dates are excluded from the
-        output.  ``None`` means no exclusion.
+    exclude_months : list of int, optional
+        Month numbers (1–12) whose peak dates are excluded from the output.
+        Default ``None``, meaning no exclusion.
 
     Returns
     -------

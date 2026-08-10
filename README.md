@@ -107,7 +107,7 @@ All thresholds are configurable via keyword arguments to ``crop_cycle_model``.
 | ``season_start_pct_of_peak`` | 0.35 | Adaptive start threshold (fraction of peak NDVI), tried before the fixed threshold |
 | ``season_end_pct_of_peak`` | 0.35 | Adaptive end threshold (fraction of peak NDVI), tried before the fixed threshold |
 | ``season_window_days`` | 90 | Search window (days) when no bounding trough exists |
-| ``exclude_months`` | None | List of month numbers to exclude from output |
+| ``exclude_months`` | None | Exclude detected seasons whose peak NDVI date falls in these months (e.g. to filter out cover-crop or off-season cycles) |
 
 ## License
 
