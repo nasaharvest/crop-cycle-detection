@@ -4,10 +4,7 @@ NDVI preprocessing utilities for the crop cycle model.
 Provides:
   - local_regression   : locally weighted linear regression for outlier detection
   - whittaker_smooth   : penalised least-squares smoother for NDVI time series
-  - setup_logging      : convenience logger configuration for notebooks / scripts
 """
-
-import logging
 
 import numpy as np
 from scipy import sparse
@@ -111,20 +108,3 @@ def whittaker_smooth(
 
     A = E + lam * (D.T @ D)
     return np.asarray(spsolve(A, y), dtype=float)
-
-
-def setup_logging(level: int = logging.INFO) -> None:
-    """
-    Configure the root logger with a standard format.
-
-    Call once at the top of a script or notebook to enable timestamped output.
-
-    Parameters
-    ----------
-    level : int, optional
-        Logging level (e.g. ``logging.INFO``, ``logging.DEBUG``).
-    """
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(levelname)s - %(funcName)s - %(message)s",
-    )
