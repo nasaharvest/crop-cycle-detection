@@ -626,7 +626,7 @@ def _clip_season_overlaps(df: pd.DataFrame) -> pd.DataFrame:
 
 def crop_cycle_model(
     df: pd.DataFrame,
-    ndvi_threshold_for_approx_season_start: float = 0.36,
+    ndvi_threshold_for_approx_season_start: float = 0.35,
     ndvi_threshold_for_approx_season_end: float = 0.4,
     min_season_length: int = 60,
     min_ndvi_for_peak: float = None,
@@ -658,7 +658,7 @@ def crop_cycle_model(
         Optional column ``poly_name`` (str) names the polygon.
         Must contain data for a **single** polygon.
     ndvi_threshold_for_approx_season_start : float, optional
-        NDVI threshold to estimate season start. Default 0.36.
+        NDVI threshold to estimate season start. Default 0.35.
     ndvi_threshold_for_approx_season_end : float, optional
         NDVI threshold to estimate season end. Default 0.4.
     min_season_length : int, optional

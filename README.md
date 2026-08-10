@@ -28,7 +28,7 @@ The model takes a DataFrame with ``date`` and ``NDVI`` columns and:
 | ``NDVI`` | float | NDVI value (0–1) |
 
 An optional ``poly_name`` column identifies the field; if absent a default name is used.
-The function expects data for a **single polygon**. For multiple fields, call it in a loop.
+The function expects data for a **single polygon**. For multiple fields, call it in a loop or in parallel — each call is independent.
 
 ## Outputs
 
@@ -98,7 +98,7 @@ All thresholds are configurable via keyword arguments to ``crop_cycle_model``.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| ``ndvi_threshold_for_approx_season_start`` | 0.36 | Fallback NDVI level for season start, used if the adaptive threshold (``season_start_pct_of_peak``) never crosses |
+| ``ndvi_threshold_for_approx_season_start`` | 0.35 | Fallback NDVI level for season start, used if the adaptive threshold (``season_start_pct_of_peak``) never crosses |
 | ``ndvi_threshold_for_approx_season_end`` | 0.40 | Fallback NDVI level for season end, used if the adaptive threshold (``season_end_pct_of_peak``) never crosses |
 | ``min_season_length`` | 60 | Minimum valid season length in days |
 | ``min_ndvi_for_peak`` | None | Hard peak threshold; if None, computed adaptively |
