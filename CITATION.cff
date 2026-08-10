@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+type: software
+message: "If you use this software, please cite it as below."
+title: "Crop Cycle Detection"
+version: "1.0.0"
+date-released: "2026-08-10"
+authors:
+  - family-names: Pelta
+    given-names: Ran
+    affiliation: "Agmatix / GrowersTech, NASA Harvest"
+repository-code: "https://github.com/nasaharvest/crop-cycle-detection"
+license: Apache-2.0
