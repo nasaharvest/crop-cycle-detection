@@ -8,14 +8,15 @@ A crop-agnostic model for detecting cropping cycles and extracting seasonal mile
 
 Most row crops follow a characteristic NDVI trajectory over a growing season: a rise from bare soil through green-up to peak vegetative vigor, followed by senescence and harvest. The shape is consistent enough that a single curve-based model can locate season boundaries, peak timing, and physiological transition points without knowing which crop it is.
 
+The input series can span any length of time — a single season or several years — and the model will detect every complete cropping cycle within it, not just one.
+
 The model takes a DataFrame with ``date`` and ``NDVI`` columns and:
 
 1. Removes cloud-related outliers and downward spikes using locally weighted regression.
 2. Resamples to daily frequency and gap-fills with PCHIP interpolation.
 3. Smooths the daily series with a Whittaker filter.
 4. Detects NDVI peaks and troughs to define trough-to-trough growing seasons.
-5. Fits a piecewise linear model within each season to locate transition breakpoints.
-6. Estimates green-up date, approximate season start/end, and peak NDVI date for each detected season.
+5. Estimates green-up date, approximate season start/end, and peak NDVI date for each detected season.
 
 ## Inputs
 
@@ -48,7 +49,6 @@ Returns a tuple ``(report, ndvi_for_processing)``:
 | ``trough_before_peak`` | Date of the pre-season trough |
 | ``trough_after_peak`` | Date of the post-season trough |
 | ``troughs_days_distance`` | Days between the two bounding troughs |
-| ``break_pt1`` … ``break_pt4`` | Piecewise linear breakpoint dates |
 
 Empty if no valid seasons are detected.
 
@@ -107,12 +107,7 @@ All thresholds are configurable via keyword arguments to ``crop_cycle_model``.
 | ``season_start_pct_of_peak`` | 0.35 | Adaptive start threshold (fraction of peak NDVI), tried before the fixed threshold |
 | ``season_end_pct_of_peak`` | 0.35 | Adaptive end threshold (fraction of peak NDVI), tried before the fixed threshold |
 | ``season_window_days`` | 90 | Search window (days) when no bounding trough exists |
-| ``ndvi_threshold_to_extend_data_for_pwlf`` | 0.3 | NDVI threshold used to extend the fitting window before the piecewise linear fit |
-| ``season_n_days_buffer`` | 30 | Days added around troughs when extending the piecewise-linear-fit window |
-| ``compute_breakpoints`` | True | Whether to fit the piecewise linear model and populate ``break_pt1``…``break_pt4`` |
 | ``exclude_months`` | None | List of month numbers to exclude from output |
-
-The piecewise linear fit is the slowest step in the pipeline. If processing takes too long and you don't need the ``break_pt1``…``break_pt4`` columns, try setting ``compute_breakpoints=False``.
 
 ## License
 

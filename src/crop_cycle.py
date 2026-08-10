@@ -20,7 +20,6 @@ import logging
 # Third-party
 import numpy as np
 import pandas as pd
-import pwlf
 from scipy.signal import argrelmax, argrelmin
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
@@ -479,73 +478,6 @@ def estimate_season_start_end(
     })
 
 
-def get_dates_for_season_pwlf(
-    row: pd.Series,
-    df: pd.DataFrame,
-    season_type: str,
-    ndvi_threshold_to_extent_data_for_pwlf: float,
-    season_n_days_buffer: int,
-) -> Tuple[pd.Timestamp, pd.Timestamp]:
-    """
-    Determine the extended date window used for piecewise linear fitting.
-
-    Parameters
-    ----------
-    row : pd.Series
-        Season row with keys ``trough_before_peak``, ``ndvi_peak_date``,
-        ``trough_after_peak``.
-    df : pd.DataFrame
-        Daily interpolated NDVI (columns ``date``, ``NDVI_interpolated``).
-    season_type : str
-        One of ``'two_troughs'``, ``'only_1st_trough'``, ``'only_2nd_trough'``.
-    ndvi_threshold_to_extent_data_for_pwlf : float
-        NDVI threshold for extending the window boundaries.
-    season_n_days_buffer : int
-        Days added around the trough when extending.
-
-    Returns
-    -------
-    Tuple[pd.Timestamp, pd.Timestamp]
-        ``(season_ext_before, season_ext_after)``
-    """
-    valid_types = ("two_troughs", "only_1st_trough", "only_2nd_trough")
-    if season_type not in valid_types:
-        raise ValueError(f"Invalid season_type '{season_type}'. Must be one of {valid_types}.")
-
-    dates = df["date"]
-    ndvi = df["NDVI_interpolated"]
-
-    if season_type in ("two_troughs", "only_1st_trough"):
-        mask = (
-            dates.between(
-                row["trough_before_peak"] - pd.DateOffset(days=season_n_days_buffer),
-                row["trough_before_peak"],
-            )
-            & (ndvi < ndvi_threshold_to_extent_data_for_pwlf)
-        )
-        season_ext_before = dates[mask].min()
-        if pd.isna(season_ext_before):
-            season_ext_before = row["trough_before_peak"]
-    else:
-        season_ext_before = row["ndvi_peak_date"] - pd.DateOffset(days=season_n_days_buffer)
-
-    if season_type in ("two_troughs", "only_2nd_trough"):
-        mask = (
-            dates.between(
-                row["trough_after_peak"],
-                row["trough_after_peak"] + pd.DateOffset(days=season_n_days_buffer),
-            )
-            & (ndvi < ndvi_threshold_to_extent_data_for_pwlf)
-        )
-        season_ext_after = dates[mask].max()
-        if pd.isna(season_ext_after):
-            season_ext_after = row["trough_after_peak"]
-    else:
-        season_ext_after = row["ndvi_peak_date"] + pd.DateOffset(days=season_n_days_buffer)
-
-    return season_ext_before, season_ext_after
-
-
 def get_dates_for_greenup(
     row: pd.Series,
     df: pd.DataFrame,
@@ -609,87 +541,14 @@ def detect_greenup(df: pd.DataFrame, greenup_ndvi_max: float = 0.5):
     return None
 
 
-def piecewise_ndvi_breakpoints(df: pd.DataFrame, n_segments: int = 5) -> dict:
-    """
-    Fit a piecewise linear model to a seasonal NDVI window and return breakpoints.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Columns ``date`` and ``NDVI_interpolated`` for the season window.
-    n_segments : int, optional
-        Number of linear segments. Default 5.
-
-    Returns
-    -------
-    dict
-        Keys: ``break_dates`` (list of Timestamps), ``break_doy`` (list of int),
-        ``df_fit`` (DataFrame with ``date``, ``NDVI_interpolated``, ``NDVI_fit``).
-    """
-    x = (df["date"] - df["date"].min()).dt.days.values
-    y = df["NDVI_interpolated"].values
-    model = pwlf.PiecewiseLinFit(x, y)
-    breakpoints = model.fit(n_segments)
-    x_pred = np.linspace(x.min(), x.max(), len(x))
-    y_pred = model.predict(x_pred)
-    df_fit = pd.DataFrame({
-        "date": df["date"].min() + pd.to_timedelta(x_pred, unit="D"),
-        "NDVI_fit": y_pred,
-    })
-    df_out = df.merge(df_fit, on="date", how="left")
-    break_dates = [df["date"].min() + pd.Timedelta(days=float(b)) for b in breakpoints]
-    break_doy = [d.timetuple().tm_yday for d in break_dates]
-    return {"break_dates": break_dates, "break_doy": break_doy, "df_fit": df_out}
-
-
-def detect_breakpoints_in_season(
-    season_ndvi_for_pwlf: pd.DataFrame,
-    season_type: str,
-) -> pd.DataFrame:
-    """
-    Run piecewise linear fitting and return named breakpoint dates.
-
-    Parameters
-    ----------
-    season_ndvi_for_pwlf : pd.DataFrame
-        Season NDVI window (columns ``date``, ``NDVI_interpolated``).
-    season_type : str
-        One of ``'two_troughs'``, ``'only_1st_trough'``, ``'only_2nd_trough'``.
-
-    Returns
-    -------
-    pd.DataFrame
-        One-row DataFrame with columns from
-        ``['break_pt1', 'break_pt2', 'break_pt3', 'break_pt4']``
-        (subset depends on ``season_type``).
-    """
-    break_point_names = [f"break_pt{n}" for n in range(1, 5)]
-    n_segments = 5 if season_type == "two_troughs" else 4
-
-    if season_type == "only_1st_trough":
-        break_point_names = break_point_names[:-1]
-    elif season_type == "only_2nd_trough":
-        break_point_names = break_point_names[1:]
-
-    pwlf_results = piecewise_ndvi_breakpoints(season_ndvi_for_pwlf, n_segments=n_segments)
-    break_dates = pd.DataFrame(
-        [pd.to_datetime(pwlf_results["break_dates"][1:-1]).normalize()],
-        columns=break_point_names,
-    )
-    return break_dates
-
-
 def process_single_crop_cycle(
     row: pd.Series,
     df: pd.DataFrame,
     ndvi_threshold_for_approx_season_start: float = 0.3,
     ndvi_threshold_for_approx_season_end: float = 0.3,
-    ndvi_threshold_to_extend_data_for_pwlf: float = 0.3,
-    season_n_days_buffer: int = 30,
     adaptive_start_threshold: float = None,
     adaptive_end_threshold: float = None,
     season_window_days: int = 90,
-    compute_breakpoints: bool = True,
 ) -> pd.DataFrame:
     """
     Compute milestones for a single crop cycle (one trough-to-trough segment).
@@ -698,9 +557,7 @@ def process_single_crop_cycle(
 
     1. Estimate approximate season start and end.
     2. Classify season type (two troughs / only first / only second).
-    3. Build the extended NDVI window for piecewise linear fitting.
-    4. Detect breakpoints (skipped if ``compute_breakpoints`` is False).
-    5. Detect green-up (when a leading trough exists).
+    3. Detect green-up (when a leading trough exists).
 
     Parameters
     ----------
@@ -712,26 +569,17 @@ def process_single_crop_cycle(
         Fixed NDVI threshold for season start. Default 0.3.
     ndvi_threshold_for_approx_season_end : float, optional
         Fixed NDVI threshold for season end. Default 0.3.
-    ndvi_threshold_to_extend_data_for_pwlf : float, optional
-        NDVI threshold for PWLF window extension. Default 0.3.
-    season_n_days_buffer : int, optional
-        Days added around troughs for PWLF extension. Default 30.
     adaptive_start_threshold : float, optional
         Peak-relative threshold tried first for season start.
     adaptive_end_threshold : float, optional
         Peak-relative threshold tried first for season end.
     season_window_days : int, optional
         Search window when no bounding trough exists. Default 90.
-    compute_breakpoints : bool, optional
-        Whether to fit the piecewise linear model and populate
-        ``break_pt1``…``break_pt4``. The fit is the slowest step in the
-        pipeline; set to False to skip it. Default True.
 
     Returns
     -------
     pd.DataFrame
-        Single-row DataFrame with season metadata, optional breakpoints, and
-        optional ``greenup_date``.
+        Single-row DataFrame with season metadata and optional ``greenup_date``.
     """
     approx = estimate_season_start_end(
         row, df,
@@ -750,21 +598,6 @@ def process_single_crop_cycle(
         season_type = "only_2nd_trough"
     else:
         season_type = "two_troughs"
-
-    if compute_breakpoints:
-        pwlf_start, pwlf_end = get_dates_for_season_pwlf(
-            row, df, season_type,
-            ndvi_threshold_to_extend_data_for_pwlf,
-            season_n_days_buffer,
-        )
-        if pd.isnull(pwlf_start) or pd.isnull(pwlf_end):
-            return season_milestones
-
-        season_ndvi = df[df["date"].between(pwlf_start, pwlf_end)].copy()
-        season_milestones = pd.concat(
-            [season_milestones, detect_breakpoints_in_season(season_ndvi, season_type)],
-            axis=1,
-        )
 
     if season_type in {"only_1st_trough", "two_troughs"}:
         gu_start, gu_end = get_dates_for_greenup(row, df)
@@ -795,8 +628,6 @@ def crop_cycle_model(
     df: pd.DataFrame,
     ndvi_threshold_for_approx_season_start: float = 0.36,
     ndvi_threshold_for_approx_season_end: float = 0.4,
-    ndvi_threshold_to_extend_data_for_pwlf: float = 0.3,
-    season_n_days_buffer: int = 30,
     min_season_length: int = 60,
     min_ndvi_for_peak: float = None,
     ndvi_peak_percentile: float = 90.0,
@@ -804,7 +635,6 @@ def crop_cycle_model(
     season_start_pct_of_peak: float = 0.35,
     season_end_pct_of_peak: float = 0.35,
     season_window_days: int = 90,
-    compute_breakpoints: bool = True,
     exclude_months: list = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -831,10 +661,6 @@ def crop_cycle_model(
         NDVI threshold to estimate season start. Default 0.36.
     ndvi_threshold_for_approx_season_end : float, optional
         NDVI threshold to estimate season end. Default 0.4.
-    ndvi_threshold_to_extend_data_for_pwlf : float, optional
-        NDVI threshold for PWLF window extension. Default 0.3.
-    season_n_days_buffer : int, optional
-        Temporal buffer (days) around troughs. Default 30.
     min_season_length : int, optional
         Minimum season length (days). Shorter seasons are dropped unless
         their length is NaN (incomplete seasons). Default 60.
@@ -855,11 +681,6 @@ def crop_cycle_model(
         Default 0.35.
     season_window_days : int, optional
         Search window (days) when no bounding trough exists. Default 90.
-    compute_breakpoints : bool, optional
-        Whether to fit the piecewise linear model and populate
-        ``break_pt1``…``break_pt4`` in the report. This fit is the slowest
-        step in the pipeline; set to False to skip it and speed up
-        processing when breakpoints aren't needed. Default True.
     exclude_months : list, optional
         List of month numbers (1–12) whose peak dates are excluded from the
         output.  ``None`` means no exclusion.
@@ -880,7 +701,6 @@ def crop_cycle_model(
         - ``trough_before_peak``
         - ``trough_after_peak``
         - ``troughs_days_distance``
-        - ``break_pt1`` … ``break_pt4``   (``None`` if ``compute_breakpoints`` is False)
 
         Empty if no valid seasons are found.
 
@@ -963,12 +783,9 @@ def crop_cycle_model(
             df=ndvi_proc,
             ndvi_threshold_for_approx_season_start=ndvi_threshold_for_approx_season_start,
             ndvi_threshold_for_approx_season_end=ndvi_threshold_for_approx_season_end,
-            ndvi_threshold_to_extend_data_for_pwlf=ndvi_threshold_to_extend_data_for_pwlf,
-            season_n_days_buffer=season_n_days_buffer,
             adaptive_start_threshold=adaptive_start,
             adaptive_end_threshold=adaptive_end,
             season_window_days=season_window_days,
-            compute_breakpoints=compute_breakpoints,
         ))
 
     report = pd.concat(milestones, ignore_index=True)
@@ -1013,7 +830,6 @@ def crop_cycle_model(
         "approx_season_start", "approx_season_end", "approx_season_length",
         "greenup_date", "ndvi_peak_date", "ndvi_peak_value",
         "trough_before_peak", "trough_after_peak", "troughs_days_distance",
-        "break_pt1", "break_pt2", "break_pt3", "break_pt4",
     ]
     for col in desired_cols:
         if col not in report.columns:
