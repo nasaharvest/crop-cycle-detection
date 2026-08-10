@@ -25,7 +25,7 @@ from scipy.signal import argrelmax, argrelmin
 from statsmodels.tsa.filters.hp_filter import hpfilter
 
 # Local
-from ndvi_preprocessing import local_regression, whittaker_smooth
+from .ndvi_preprocessing import local_regression, whittaker_smooth
 
 
 logger = logging.getLogger(__name__)
@@ -689,6 +689,7 @@ def process_single_crop_cycle(
     adaptive_start_threshold: float = None,
     adaptive_end_threshold: float = None,
     season_window_days: int = 90,
+    compute_breakpoints: bool = True,
 ) -> pd.DataFrame:
     """
     Compute milestones for a single crop cycle (one trough-to-trough segment).
@@ -698,7 +699,7 @@ def process_single_crop_cycle(
     1. Estimate approximate season start and end.
     2. Classify season type (two troughs / only first / only second).
     3. Build the extended NDVI window for piecewise linear fitting.
-    4. Detect breakpoints.
+    4. Detect breakpoints (skipped if ``compute_breakpoints`` is False).
     5. Detect green-up (when a leading trough exists).
 
     Parameters
@@ -721,12 +722,16 @@ def process_single_crop_cycle(
         Peak-relative threshold tried first for season end.
     season_window_days : int, optional
         Search window when no bounding trough exists. Default 90.
+    compute_breakpoints : bool, optional
+        Whether to fit the piecewise linear model and populate
+        ``break_pt1``…``break_pt4``. The fit is the slowest step in the
+        pipeline; set to False to skip it. Default True.
 
     Returns
     -------
     pd.DataFrame
-        Single-row DataFrame with season metadata, breakpoints, and optional
-        ``greenup_date``.
+        Single-row DataFrame with season metadata, optional breakpoints, and
+        optional ``greenup_date``.
     """
     approx = estimate_season_start_end(
         row, df,
@@ -746,19 +751,20 @@ def process_single_crop_cycle(
     else:
         season_type = "two_troughs"
 
-    pwlf_start, pwlf_end = get_dates_for_season_pwlf(
-        row, df, season_type,
-        ndvi_threshold_to_extend_data_for_pwlf,
-        season_n_days_buffer,
-    )
-    if pd.isnull(pwlf_start) or pd.isnull(pwlf_end):
-        return season_milestones
+    if compute_breakpoints:
+        pwlf_start, pwlf_end = get_dates_for_season_pwlf(
+            row, df, season_type,
+            ndvi_threshold_to_extend_data_for_pwlf,
+            season_n_days_buffer,
+        )
+        if pd.isnull(pwlf_start) or pd.isnull(pwlf_end):
+            return season_milestones
 
-    season_ndvi = df[df["date"].between(pwlf_start, pwlf_end)].copy()
-    season_milestones = pd.concat(
-        [season_milestones, detect_breakpoints_in_season(season_ndvi, season_type)],
-        axis=1,
-    )
+        season_ndvi = df[df["date"].between(pwlf_start, pwlf_end)].copy()
+        season_milestones = pd.concat(
+            [season_milestones, detect_breakpoints_in_season(season_ndvi, season_type)],
+            axis=1,
+        )
 
     if season_type in {"only_1st_trough", "two_troughs"}:
         gu_start, gu_end = get_dates_for_greenup(row, df)
@@ -798,6 +804,7 @@ def crop_cycle_model(
     season_start_pct_of_peak: float = 0.35,
     season_end_pct_of_peak: float = 0.35,
     season_window_days: int = 90,
+    compute_breakpoints: bool = True,
     exclude_months: list = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -848,6 +855,11 @@ def crop_cycle_model(
         Default 0.35.
     season_window_days : int, optional
         Search window (days) when no bounding trough exists. Default 90.
+    compute_breakpoints : bool, optional
+        Whether to fit the piecewise linear model and populate
+        ``break_pt1``…``break_pt4`` in the report. This fit is the slowest
+        step in the pipeline; set to False to skip it and speed up
+        processing when breakpoints aren't needed. Default True.
     exclude_months : list, optional
         List of month numbers (1–12) whose peak dates are excluded from the
         output.  ``None`` means no exclusion.
@@ -868,7 +880,7 @@ def crop_cycle_model(
         - ``trough_before_peak``
         - ``trough_after_peak``
         - ``troughs_days_distance``
-        - ``break_pt1`` … ``break_pt4``
+        - ``break_pt1`` … ``break_pt4``   (``None`` if ``compute_breakpoints`` is False)
 
         Empty if no valid seasons are found.
 
@@ -956,6 +968,7 @@ def crop_cycle_model(
             adaptive_start_threshold=adaptive_start,
             adaptive_end_threshold=adaptive_end,
             season_window_days=season_window_days,
+            compute_breakpoints=compute_breakpoints,
         ))
 
     report = pd.concat(milestones, ignore_index=True)
