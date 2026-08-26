@@ -2,6 +2,8 @@
 
 A crop-agnostic model for detecting cropping cycles and extracting seasonal milestones from an NDVI time series — no crop-specific calibration needed.
 
+A hosted version of this model is available at [agri-field-cycle.growerstech.com](https://agri-field-cycle.growerstech.com).
+
 ![Detected seasons on an NDVI time series](docs/ndvi_chart.png)
 
 ## How it works
