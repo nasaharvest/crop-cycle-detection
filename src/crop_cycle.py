@@ -93,11 +93,13 @@ def clean_ndvi_timeseries(
     Steps:
 
     1. Ensure a ``poly_name`` column exists.
-    2. Sort by ``[poly_name, date]``.
-    3. Smooth with local regression (window ``k_to_find_outliers``).
-    4. Drop observations whose signed deviation from the smooth falls below
+    2. Drop rows with a missing date or NDVI.  One missing value would make
+       every local-regression estimate NaN and switch off the outlier step.
+    3. Sort by ``[poly_name, date]``.
+    4. Smooth with local regression (window ``k_to_find_outliers``).
+    5. Drop observations whose signed deviation from the smooth falls below
        ``dev_threshold_lower``.
-    5. Detect and remove three-point downward spikes.
+    6. Detect and remove three-point downward spikes.
 
     Parameters
     ----------
@@ -126,6 +128,10 @@ def clean_ndvi_timeseries(
     df = df.copy()
     if "poly_name" not in df.columns:
         df["poly_name"] = "unnamed polygon"
+
+    df = df.dropna(subset=["date", "NDVI"]).copy()
+    if df.empty:
+        return df[["poly_name", "date", "NDVI"]]
 
     df.sort_values(["poly_name", "date"], inplace=True)
     df.reset_index(drop=True, inplace=True)
@@ -373,7 +379,7 @@ def extract_seasons_trough_to_trough(df: pd.DataFrame) -> pd.DataFrame:
             "trough_before_peak": last_trough,
             "trough_after_peak": pd.NaT,
             "troughs_days_distance": np.nan,
-            "ndvi_peak_value": peak["NDVI"],
+            "ndvi_peak_value": round(peak["NDVI"], 2),
             "ndvi_peak_date": peak["date"],
         })
 
@@ -734,6 +740,10 @@ def crop_cycle_model(
 
     # --- Clean, interpolate, smooth ---
     df_clean = clean_ndvi_timeseries(df)
+    if df_clean.empty:
+        logger.info(f"No usable NDVI observations for {poly_name}.")
+        return pd.DataFrame(), pd.DataFrame()
+
     ndvi_proc = df_clean.sort_values("date")
     ndvi_proc = ndvi_proc.set_index("date")[["NDVI"]].resample("D").mean()
     ndvi_proc["NDVI"] = ndvi_proc["NDVI"].interpolate(method="pchip")
@@ -819,10 +829,17 @@ def crop_cycle_model(
     ].copy()
 
     report.sort_values("ndvi_peak_date", inplace=True)
-    report["season_number"] = range(1, len(report) + 1)
     report.reset_index(drop=True, inplace=True)
     report = _clip_season_overlaps(report)
     report = _season_length(report)
+
+    # Clipping moves a season's start later, which can take it below the minimum.
+    report = report[
+        (report["approx_season_length"] >= min_season_length)
+        | report["approx_season_length"].isnull()
+    ].copy()
+    report["season_number"] = range(1, len(report) + 1)
+    report.reset_index(drop=True, inplace=True)
     report.insert(1, "poly_name", poly_name)
 
     desired_cols = [
